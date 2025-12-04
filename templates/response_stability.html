@@ -1,0 +1,585 @@
+{% extends "base.html" %}
+
+{% block title %}Response Stability | PromptVana{% endblock %}
+
+{% block styles %}
+.progress-container {
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 10;
+    padding: 1rem;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 1rem;
+}
+
+.stability-table {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.stability-table thead th {
+    background-color: white;
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.stability-table tbody td {
+    padding: 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: top;
+}
+
+.stability-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.stability-table tbody td:first-child {
+    color: var(--text-secondary);
+    font-weight: 500;
+    width: 80px;
+}
+
+.score-card {
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem;
+    text-align: center;
+}
+
+.score-label {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.5rem;
+}
+
+.score-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+}
+
+.score-excellent { color: #10b981; }
+.score-good { color: #3b82f6; }
+.score-fair { color: #f59e0b; }
+.score-poor { color: #ef4444; }
+
+.chart-container {
+    position: relative;
+    height: 250px;
+    margin-top: 1rem;
+}
+
+.chart-toggle {
+    cursor: pointer;
+    user-select: none;
+}
+{% endblock %}
+
+{% block content %}
+<div class="container py-4 py-md-5">
+    <!-- Header -->
+    <div class="mb-4">
+        <div class="d-flex justify-content-between align-items-start">
+            <div>
+                <h2 class="fw-bold mb-1">Response Stability Checker</h2>
+                <p class="text-muted mb-0">Test response consistency across multiple runs</p>
+            </div>
+            <button type="button" id="revertButton" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-counterclockwise me-1"></i>Revert to Default
+            </button>
+        </div>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="card main-card">
+        <div class="card-body p-4">
+            <form id="stabilityForm">
+                <!-- Prompt Input -->
+                <div class="mb-4">
+                    <label for="prompt" class="form-label fw-semibold">Enter your prompt</label>
+                    <textarea class="form-control" id="prompt" name="prompt" rows="4" 
+                        placeholder="Type your question or prompt here..." required></textarea>
+                </div>
+                
+                <!-- Model Selection -->
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <label for="model" class="form-label fw-semibold">Select Model</label>
+                        <select class="form-select" id="model" name="model" required>
+                            <option value="">Choose a model...</option>
+                            <option value="gpt4">OpenAI GPT-4</option>
+                            <option value="gpt4o">OpenAI GPT-4o</option>
+                            <option value="gpt35-turbo">OpenAI GPT-3.5-turbo</option>
+                            <option value="anthropic">Anthropic Claude Sonnet 4</option>
+                            <option value="gemini">Google Gemini Flash 2.0</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <label for="apiKey" class="form-label fw-semibold">API Key</label>
+                        <input type="password" class="form-control" id="apiKey" name="apiKey" 
+                            placeholder="Enter your API key" required>
+                    </div>
+                </div>
+                
+                <div class="row g-3 mb-4">
+                    
+                    <div class="col-md-6">
+                        <label for="numRuns" class="form-label fw-semibold">Number of Runs</label>
+                        <select class="form-select" id="numRuns" name="numRuns" required>
+                            <option value="5">5</option>
+                            <option value="10" selected>10</option>
+                            <option value="15">15</option>
+                            <option value="20">20</option>
+                            <option value="25">25</option>
+                            <option value="30">30</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <!-- Advanced Parameters (Collapsible) -->
+                <div class="mb-4">
+                    <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" 
+                        data-bs-target="#advancedParams" aria-expanded="false">
+                        <i class="bi bi-sliders me-1"></i>Advanced Parameters
+                    </button>
+                    
+                    <div class="collapse mt-3" id="advancedParams">
+                        <div class="card card-body">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label for="temperature" class="form-label small text-muted">
+                                        Temperature <span class="range-value" id="tempValue">0.7</span>
+                                    </label>
+                                    <input type="range" class="form-range" id="temperature" 
+                                        min="0" max="1" step="0.1" value="0.7">
+                                </div>
+                                
+                                <div class="col-md-6">
+                                    <label for="maxTokens" class="form-label small text-muted">
+                                        Max Tokens <span class="range-value" id="tokensValue">500</span>
+                                    </label>
+                                    <input type="range" class="form-range" id="maxTokens" 
+                                        min="100" max="2000" step="100" value="500">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Submit Button -->
+                <div class="d-grid">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="bi bi-graph-up me-2"></i>Run Stability Test
+                    </button>
+                </div>
+            </form>
+            
+            <!-- Results Container -->
+            <div id="resultsContainer" class="mt-4" style="display: none;">
+                <!-- Loading Spinner -->
+                <div id="loadingContainer" class="text-center py-5" style="display: none;">
+                    <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="text-muted mb-1">Running stability tests...</p>
+                    <p class="text-muted small" id="loadingMessage">This may take a few minutes depending on the number of runs</p>
+                </div>
+                
+                <!-- Results -->
+                <div id="results"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const STORAGE_KEY = 'responseStability_formData';
+    const RESULTS_STORAGE_KEY = 'responseStability_results';
+    let saveTimeout = null;
+    
+    // Save form data to sessionStorage
+    function saveFormData() {
+        const formData = {
+            prompt: document.getElementById('prompt').value,
+            model: document.getElementById('model').value,
+            apiKey: document.getElementById('apiKey').value,
+            numRuns: document.getElementById('numRuns').value,
+            temperature: document.getElementById('temperature').value,
+            maxTokens: document.getElementById('maxTokens').value
+        };
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(formData));
+    }
+    
+    // Load form data from sessionStorage
+    function loadFormData() {
+        const savedData = sessionStorage.getItem(STORAGE_KEY);
+        if (savedData) {
+            try {
+                const formData = JSON.parse(savedData);
+                
+                document.getElementById('prompt').value = formData.prompt || '';
+                document.getElementById('model').value = formData.model || '';
+                document.getElementById('apiKey').value = formData.apiKey || '';
+                document.getElementById('numRuns').value = formData.numRuns || '10';
+                
+                if (formData.temperature) {
+                    document.getElementById('temperature').value = formData.temperature;
+                    document.getElementById('tempValue').textContent = formData.temperature;
+                }
+                if (formData.maxTokens) {
+                    document.getElementById('maxTokens').value = formData.maxTokens;
+                    document.getElementById('tokensValue').textContent = formData.maxTokens;
+                }
+            } catch (e) {
+                console.error('Error loading form data:', e);
+            }
+        }
+    }
+    
+    // Save results to sessionStorage
+    function saveResults(data) {
+        try {
+            sessionStorage.setItem(RESULTS_STORAGE_KEY, JSON.stringify(data));
+        } catch (e) {
+            console.error('Error saving results:', e);
+        }
+    }
+    
+    // Load results from sessionStorage
+    function loadResults() {
+        const savedResults = sessionStorage.getItem(RESULTS_STORAGE_KEY);
+        if (savedResults) {
+            try {
+                const data = JSON.parse(savedResults);
+                
+                // Show results
+                document.getElementById('resultsContainer').style.display = 'block';
+                document.getElementById('loadingContainer').style.display = 'none';
+                displayResults(data);
+            } catch (e) {
+                console.error('Error loading results:', e);
+            }
+        }
+    }
+    
+    // Debounced auto-save for text inputs
+    function debouncedSave() {
+        clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(saveFormData, 500);
+    }
+    
+    // Add event listeners on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        loadFormData();
+        loadResults();
+        
+        // Add input listeners for auto-save
+        document.getElementById('prompt').addEventListener('input', debouncedSave);
+        document.getElementById('model').addEventListener('change', saveFormData);
+        document.getElementById('apiKey').addEventListener('input', debouncedSave);
+        document.getElementById('numRuns').addEventListener('change', saveFormData);
+    });
+    
+    // Revert to Default button
+    document.getElementById('revertButton').addEventListener('click', function() {
+        // Reset form to defaults
+        document.getElementById('prompt').value = '';
+        document.getElementById('model').value = '';
+        document.getElementById('apiKey').value = '';
+        document.getElementById('numRuns').value = '10';
+        document.getElementById('temperature').value = '0.7';
+        document.getElementById('tempValue').textContent = '0.7';
+        document.getElementById('maxTokens').value = '500';
+        document.getElementById('tokensValue').textContent = '500';
+        
+        // Hide results
+        document.getElementById('resultsContainer').style.display = 'none';
+        document.getElementById('results').innerHTML = '';
+        
+        // Clear sessionStorage
+        sessionStorage.removeItem(STORAGE_KEY);
+        sessionStorage.removeItem(RESULTS_STORAGE_KEY);
+    });
+    
+    // Update range values
+    // Update range values (with auto-save)
+    document.getElementById('temperature').addEventListener('input', function() {
+        document.getElementById('tempValue').textContent = this.value;
+        saveFormData();
+    });
+    
+    document.getElementById('maxTokens').addEventListener('input', function() {
+        document.getElementById('tokensValue').textContent = this.value;
+        saveFormData();
+    });
+    
+    // Handle form submission
+    document.getElementById('stabilityForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const prompt = document.getElementById('prompt').value.trim();
+        const model = document.getElementById('model').value;
+        const apiKey = document.getElementById('apiKey').value.trim();
+        const numRuns = parseInt(document.getElementById('numRuns').value);
+        const temperature = parseFloat(document.getElementById('temperature').value);
+        const maxTokens = parseInt(document.getElementById('maxTokens').value);
+        
+        if (!prompt || !model || !apiKey) {
+            alert('Please fill in all required fields');
+            return;
+        }
+        
+        // Show results container and loading spinner
+        document.getElementById('resultsContainer').style.display = 'block';
+        document.getElementById('loadingContainer').style.display = 'block';
+        document.getElementById('results').innerHTML = '';
+        
+        // Update loading message
+        document.getElementById('loadingMessage').textContent = `Running ${numRuns} tests with ${model}. This may take a few minutes...`;
+        
+        try {
+            const response = await fetch('/check-stability', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    prompt: prompt,
+                    model: model,
+                    api_key: apiKey,
+                    num_runs: numRuns,
+                    temperature: temperature,
+                    max_tokens: maxTokens
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (!response.ok) {
+                alert(data.error || 'An error occurred');
+                document.getElementById('loadingContainer').style.display = 'none';
+                return;
+            }
+            
+            // Hide loading, show results
+            document.getElementById('loadingContainer').style.display = 'none';
+            displayResults(data);
+            saveResults(data);
+            
+        } catch (error) {
+            alert('Error: ' + error.message);
+            document.getElementById('loadingContainer').style.display = 'none';
+        }
+    });
+    
+    function displayResults(data) {
+        const resultsDiv = document.getElementById('results');
+        
+        // Add summary header
+        let html = `
+            <div class="alert alert-info mb-4">
+                <h5 class="mb-2"><i class="bi bi-info-circle me-2"></i>Test Summary</h5>
+                <p class="mb-0">${data.summary_text}</p>
+            </div>
+            
+            <!-- Score Cards -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-4">
+                    <div class="score-card">
+                        <div class="score-label">Stability Score</div>
+                        <div class="score-value ${data.wobble_class}">${data.wobble_score}%</div>
+                        <small class="text-muted d-block mt-2">Higher = more consistent</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="score-card">
+                        <div class="score-label">Lexical Diversity</div>
+                        <div class="score-value ${data.diversity_class}">${data.lexical_diversity}</div>
+                        <small class="text-muted d-block mt-2">Vocabulary variation</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="score-card">
+                        <div class="score-label">Average Perplexity (Normalized)</div>
+                        <div class="score-value ${data.perplexity_class}">${data.actual_perplexity !== null ? data.actual_perplexity : 'N/A'}</div>
+                        <small class="text-muted d-block mt-2">0 = Confident. 1 = Unsure.</small>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table stability-table">
+                    <thead>
+                        <tr>
+                            <th>Run</th>
+                            <th>Response</th>
+                            <th style="width: 120px;">Perplexity</th>
+                            <th style="width: 140px;">Chart</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        // Display each response as a table row
+        data.responses.forEach((item, index) => {
+            const hasError = item.error !== null;
+            const hasLogprobs = item.logprobs && item.logprobs.length > 0;
+            const chartId = `stability_chart_${index}`;
+            
+            // Use backend-calculated perplexity
+            const perplexity = item.perplexity !== null && item.perplexity !== undefined ? item.perplexity : 'N/A';
+            
+            html += `
+                <tr>
+                    <td>${item.run}</td>
+                    <td>
+                        ${hasError ? 
+                            `<span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>${item.error}</span>` : 
+                            escapeHtml(item.response)
+                        }
+                    </td>
+                    <td class="text-start">
+                        <span class="badge fs-6 ${perplexity !== 'N/A' && perplexity <= 0.3 ? 'bg-success' : perplexity !== 'N/A' && perplexity <= 0.6 ? 'bg-warning' : perplexity !== 'N/A' ? 'bg-danger' : 'bg-secondary'}">${perplexity}</span>
+                    </td>
+                    <td class="text-center">
+                        ${hasLogprobs ? `
+                            <button class="btn btn-sm btn-outline-primary" onclick="toggleStabilityChart('${chartId}', ${index})" id="${chartId}_btn">
+                                <i class="bi bi-graph-up me-1"></i>Show Chart
+                            </button>
+                        ` : '-'}
+                    </td>
+                </tr>
+                ${hasLogprobs ? `
+                <tr id="${chartId}_row" style="display: none;">
+                    <td colspan="4">
+                        <div class="chart-container">
+                            <canvas id="${chartId}"></canvas>
+                        </div>
+                    </td>
+                </tr>
+                ` : ''}
+            `;
+        });
+        
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+        
+        resultsDiv.innerHTML = html;
+        
+        // Store response data for charts
+        window.stabilityResponseData = data.responses;
+    }
+    
+    function createStabilityLogprobChart(canvasId, tokens, logprobs) {
+        const ctx = document.getElementById(canvasId).getContext('2d');
+        
+        // Limit to first 50 tokens for readability
+        const displayTokens = tokens.slice(0, 50);
+        const displayLogprobs = logprobs.slice(0, 50);
+        
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: displayTokens,
+                datasets: [{
+                    label: 'Log Probability',
+                    data: displayLogprobs,
+                    borderColor: 'rgb(59, 130, 246)',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    borderWidth: 2,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    tension: 0.1,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: function(context) {
+                                const idx = context[0].dataIndex;
+                                return `Token: "${displayTokens[idx]}"`;
+                            },
+                            label: function(context) {
+                                return `Log Prob: ${context.parsed.y.toFixed(3)}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Tokens'
+                        },
+                        ticks: {
+                            maxRotation: 45,
+                            minRotation: 45,
+                            autoSkip: true,
+                            maxTicksLimit: 20
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Log Probability'
+                        },
+                        beginAtZero: false
+                    }
+                }
+            }
+        });
+    }
+    
+    function toggleStabilityChart(chartId, index) {
+        const chartRow = document.getElementById(`${chartId}_row`);
+        const canvas = document.getElementById(chartId);
+        
+        if (chartRow.style.display === 'none') {
+            chartRow.style.display = 'table-row';
+            
+            // Create chart if not already created
+            if (canvas && !canvas.chart && window.stabilityResponseData) {
+                const response = window.stabilityResponseData[index];
+                if (response.tokens && response.logprobs) {
+                    createStabilityLogprobChart(chartId, response.tokens, response.logprobs);
+                    canvas.chart = true; // Mark as initialized
+                }
+            }
+        } else {
+            chartRow.style.display = 'none';
+        }
+    }
+    
+    // Make function globally available
+    window.toggleStabilityChart = toggleStabilityChart;
+    
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+</script>
+{% endblock %}

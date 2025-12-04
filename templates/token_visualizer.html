@@ -1,0 +1,777 @@
+{% extends "base.html" %}
+
+{% block title %}Token Visualizer | PromptVana{% endblock %}
+
+{% block styles %}
+.token-table-container {
+    max-height: 600px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.token-row {
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.token-row:hover {
+    background-color: var(--bg-light);
+}
+
+.token-row.selected {
+    background-color: #e0f2fe;
+    border-left: 4px solid var(--primary-color);
+}
+
+.token-position {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    min-width: 40px;
+}
+
+.token-text {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-weight: 600;
+    flex: 1;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.95rem;
+}
+
+.token-prob-bar {
+    width: 80px;
+    height: 20px;
+    background-color: #f3f4f6;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+}
+
+.token-prob-fill {
+    height: 100%;
+    background: #0047AB;
+    transition: width 0.3s ease;
+}
+
+.token-prob-text {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.detail-panel {
+    max-height: 600px;
+    overflow-y: auto;
+    padding-left: 1rem;
+    padding-right: 1rem;
+}
+
+.chosen-token-display {
+    text-align: center;
+    padding: 2rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 12px;
+    color: white;
+    margin-bottom: 2rem;
+}
+
+.chosen-token-text {
+    font-family: 'Courier New', monospace;
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    word-break: break-word;
+}
+
+.chosen-token-prob {
+    font-size: 1.25rem;
+    opacity: 0.95;
+}
+
+.alternatives-section {
+    margin-top: 2rem;
+}
+
+.alternative-item {
+    padding: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+    background: white;
+    transition: all 0.2s ease;
+}
+
+.alternative-item:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-color: var(--primary-color);
+}
+
+.alternative-rank {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    background-color: var(--primary-color);
+    color: white;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 24px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-right: 0.75rem;
+}
+
+.alternative-token {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-weight: 600;
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+}
+
+.alternative-prob-container {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.alternative-prob-bar {
+    flex: 1;
+    height: 24px;
+    background-color: #f3f4f6;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+}
+
+.alternative-prob-fill {
+    height: 100%;
+    background: #0047AB;
+    transition: width 0.3s ease;
+}
+
+.alternative-prob-text {
+    min-width: 60px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--text-secondary);
+}
+
+.empty-state i {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    opacity: 0.3;
+}
+
+.response-preview {
+    background-color: var(--bg-light);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-top: 1rem;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+.response-preview-text {
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+@media (max-width: 991.98px) {
+    .chosen-token-text {
+        font-size: 2rem;
+    }
+}
+{% endblock %}
+
+{% block content %}
+<div class="container py-4 py-md-5">
+    <!-- Header -->
+    <div class="mb-4">
+        <div class="d-flex justify-content-between align-items-start">
+            <div>
+                <h2 class="fw-bold mb-1">Token Decision Tree Visualizer</h2>
+                <p class="text-muted mb-0">See the token-by-token decision process with probability distributions</p>
+            </div>
+            <button type="button" id="revertButton" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-counterclockwise me-1"></i>Revert to Default
+            </button>
+        </div>
+    </div>
+    
+    <!-- Input Section -->
+    <div class="card main-card mb-4">
+        <div class="card-body p-4">
+            <form id="visualizerForm">
+                <!-- Model Selection -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="model" class="form-label fw-semibold">Model</label>
+                        <select class="form-select" id="model" name="model" required>
+                            <option value="gpt4o" selected>OpenAI GPT-4o</option>
+                            <option value="gpt4">OpenAI GPT-4</option>
+                            <option value="gpt35-turbo">OpenAI GPT-3.5-turbo</option>
+                        </select>
+                        <small class="text-muted">Only OpenAI models support token probability visualization</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="apiKey" class="form-label fw-semibold">API Key</label>
+                        <input type="password" class="form-control" id="apiKey" name="apiKey" placeholder="Enter your OpenAI API key" required>
+                    </div>
+                </div>
+                
+                <!-- Prompt Input -->
+                <div class="mb-3">
+                    <label for="prompt" class="form-label fw-semibold">Prompt</label>
+                    <textarea class="form-control" id="prompt" name="prompt" rows="4" 
+                        placeholder="Enter your prompt here..." required></textarea>
+                </div>
+                
+                <!-- Parameters -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label class="form-label fw-semibold mb-0">Temperature</label>
+                            <span class="range-value" id="tempValue">0.7</span>
+                        </div>
+                        <input type="range" class="form-range" id="temperature" min="0" max="1" step="0.1" value="0.7">
+                    </div>
+                    <div class="col-md-6">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label class="form-label fw-semibold mb-0">Max Tokens</label>
+                            <span class="range-value" id="tokensValue">500</span>
+                        </div>
+                        <input type="range" class="form-range" id="maxTokens" min="50" max="2000" step="50" value="500">
+                    </div>
+                </div>
+                
+                <!-- Advanced Parameters (Collapsible) -->
+                <div class="mb-3">
+                    <button class="btn btn-link text-decoration-none p-0 mb-2" type="button" data-bs-toggle="collapse" data-bs-target="#advancedParams" aria-expanded="false" aria-controls="advancedParams">
+                        <i class="bi bi-gear me-1"></i><span class="fw-semibold">Advanced Parameters</span> <i class="bi bi-chevron-down" id="advancedToggleIcon"></i>
+                    </button>
+                    <div class="collapse" id="advancedParams">
+                        <div class="card card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <label class="form-label fw-semibold mb-0">
+                                            Top P (Nucleus Sampling)
+                                            <i class="bi bi-info-circle text-muted" data-bs-toggle="tooltip" title="Considers tokens with top_p probability mass. Lower = more focused."></i>
+                                        </label>
+                                        <span class="range-value" id="topPValue">1.0</span>
+                                    </div>
+                                    <input type="range" class="form-range" id="topP" min="0" max="1" step="0.05" value="1.0">
+                                    <small class="text-muted">Default: 1.0</small>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <label class="form-label fw-semibold mb-0">
+                                            Top Logprobs
+                                            <i class="bi bi-info-circle text-muted" data-bs-toggle="tooltip" title="Number of alternative tokens to show (1-20)"></i>
+                                        </label>
+                                        <span class="range-value" id="topLogprobsValue">5</span>
+                                    </div>
+                                    <input type="range" class="form-range" id="topLogprobs" min="1" max="20" step="1" value="5">
+                                    <small class="text-muted">Default: 5 alternatives</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Submit Button -->
+                <div class="d-grid">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="bi bi-diagram-3 me-2"></i>Generate & Visualize
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Results Section -->
+    <div id="resultsSection" style="display: none;">
+        <!-- Stats Bar -->
+        <div class="card mb-3">
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-3">
+                        <div class="text-muted small">Model</div>
+                        <div class="fw-bold" id="statsModel">-</div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-muted small">Total Tokens</div>
+                        <div class="fw-bold" id="statsTokens">-</div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-muted small">Time Taken</div>
+                        <div class="fw-bold" id="statsTime">-</div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-muted small">Selected Token</div>
+                        <div class="fw-bold" id="statsPosition">-</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Response Preview -->
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="fw-semibold mb-2">Generated Response</h6>
+                <div class="response-preview">
+                    <div class="response-preview-text" id="responsePreview"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Visualization -->
+        <div class="row">
+            <!-- Token List Panel -->
+            <div class="col-lg-5 mb-3">
+                <div class="card">
+                    <div class="card-header bg-white">
+                        <h6 class="mb-0 fw-semibold">
+                            <i class="bi bi-list-ol me-2"></i>Token Sequence
+                        </h6>
+                    </div>
+                    <div class="token-table-container" id="tokenList">
+                        <!-- Tokens will be populated here -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Detail Panel -->
+            <div class="col-lg-7 mb-3">
+                <div class="card">
+                    <div class="card-header bg-white">
+                        <h6 class="mb-0 fw-semibold">
+                            <i class="bi bi-diagram-3 me-2"></i>Top Tokens
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div id="detailPanel" class="detail-panel">
+                            <div class="empty-state">
+                                <i class="bi bi-cursor"></i>
+                                <p>Select a token from the list to view its decision tree</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Loading Spinner -->
+    <div id="loading" class="text-center py-5" style="display: none;">
+        <div class="spinner-border spinner-border-custom mb-3" role="status" style="width: 3rem; height: 3rem; color: var(--primary-color);">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="text-muted">Generating token visualization...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const STORAGE_KEY = 'tokenVisualizer_formData';
+    const RESULTS_STORAGE_KEY = 'tokenVisualizer_results';
+    let saveTimeout = null;
+    let tokenData = [];
+    let selectedTokenIndex = 0;
+    
+    // Save form data to sessionStorage
+    function saveFormData() {
+        const formData = {
+            model: document.getElementById('model').value,
+            apiKey: document.getElementById('apiKey').value,
+            prompt: document.getElementById('prompt').value,
+            temperature: document.getElementById('temperature').value,
+            maxTokens: document.getElementById('maxTokens').value,
+            topP: document.getElementById('topP').value,
+            topLogprobs: document.getElementById('topLogprobs').value
+        };
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(formData));
+    }
+    
+    // Load form data from sessionStorage
+    function loadFormData() {
+        const savedData = sessionStorage.getItem(STORAGE_KEY);
+        if (savedData) {
+            try {
+                const formData = JSON.parse(savedData);
+                
+                document.getElementById('model').value = formData.model || 'gpt4o';
+                document.getElementById('apiKey').value = formData.apiKey || '';
+                document.getElementById('prompt').value = formData.prompt || '';
+                
+                if (formData.temperature) {
+                    document.getElementById('temperature').value = formData.temperature;
+                    document.getElementById('tempValue').textContent = formData.temperature;
+                }
+                if (formData.maxTokens) {
+                    document.getElementById('maxTokens').value = formData.maxTokens;
+                    document.getElementById('tokensValue').textContent = formData.maxTokens;
+                }
+                if (formData.topP) {
+                    document.getElementById('topP').value = formData.topP;
+                    document.getElementById('topPValue').textContent = formData.topP;
+                }
+                if (formData.topLogprobs) {
+                    document.getElementById('topLogprobs').value = formData.topLogprobs;
+                    document.getElementById('topLogprobsValue').textContent = formData.topLogprobs;
+                }
+            } catch (e) {
+                console.error('Error loading form data:', e);
+            }
+        }
+    }
+    
+    // Save results to sessionStorage
+    function saveResults(data) {
+        try {
+            const resultData = {
+                tokenData: data.token_data,
+                model: data.model,
+                totalTokens: data.total_tokens,
+                timeTaken: data.time_taken,
+                response: data.response,
+                selectedTokenIndex: selectedTokenIndex
+            };
+            sessionStorage.setItem(RESULTS_STORAGE_KEY, JSON.stringify(resultData));
+        } catch (e) {
+            console.error('Error saving results:', e);
+        }
+    }
+    
+    // Load results from sessionStorage
+    function loadResults() {
+        const savedResults = sessionStorage.getItem(RESULTS_STORAGE_KEY);
+        if (savedResults) {
+            try {
+                const resultData = JSON.parse(savedResults);
+                
+                tokenData = resultData.tokenData;
+                selectedTokenIndex = resultData.selectedTokenIndex || 0;
+                
+                // Update stats
+                document.getElementById('statsModel').textContent = resultData.model;
+                document.getElementById('statsTokens').textContent = resultData.totalTokens;
+                document.getElementById('statsTime').textContent = resultData.timeTaken + 's';
+                document.getElementById('responsePreview').textContent = resultData.response;
+                
+                // Render token list
+                renderTokenList();
+                
+                // Show results
+                document.getElementById('resultsSection').style.display = 'block';
+                
+                // Select the saved token
+                if (tokenData.length > 0) {
+                    selectToken(selectedTokenIndex);
+                }
+            } catch (e) {
+                console.error('Error loading results:', e);
+            }
+        }
+    }
+    
+    // Debounced auto-save for text inputs
+    function debouncedSave() {
+        clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(saveFormData, 500);
+    }
+    
+    // Add event listeners on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        loadFormData();
+        loadResults();
+        
+        // Add input listeners for auto-save
+        document.getElementById('model').addEventListener('change', saveFormData);
+        document.getElementById('apiKey').addEventListener('input', debouncedSave);
+        document.getElementById('prompt').addEventListener('input', debouncedSave);
+    });
+    
+    // Revert to Default button
+    document.getElementById('revertButton').addEventListener('click', function() {
+        // Reset form to defaults
+        document.getElementById('model').value = 'gpt4o';
+        document.getElementById('apiKey').value = '';
+        document.getElementById('prompt').value = '';
+        document.getElementById('temperature').value = '0.7';
+        document.getElementById('tempValue').textContent = '0.7';
+        document.getElementById('maxTokens').value = '500';
+        document.getElementById('tokensValue').textContent = '500';
+        document.getElementById('topP').value = '1.0';
+        document.getElementById('topPValue').textContent = '1.0';
+        document.getElementById('topLogprobs').value = '5';
+        document.getElementById('topLogprobsValue').textContent = '5';
+        
+        // Hide results
+        document.getElementById('resultsSection').style.display = 'none';
+        
+        // Clear sessionStorage
+        sessionStorage.removeItem(STORAGE_KEY);
+        sessionStorage.removeItem(RESULTS_STORAGE_KEY);
+    });
+    
+    // Initialize Bootstrap tooltips
+    document.addEventListener('DOMContentLoaded', function() {
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+        
+        // Toggle chevron icon when advanced params is expanded/collapsed
+        const advancedParams = document.getElementById('advancedParams');
+        const toggleIcon = document.getElementById('advancedToggleIcon');
+        advancedParams.addEventListener('show.bs.collapse', function() {
+            toggleIcon.classList.remove('bi-chevron-down');
+            toggleIcon.classList.add('bi-chevron-up');
+        });
+        advancedParams.addEventListener('hide.bs.collapse', function() {
+            toggleIcon.classList.remove('bi-chevron-up');
+            toggleIcon.classList.add('bi-chevron-down');
+        });
+    });
+    
+    // Update slider values (with auto-save)
+    document.getElementById('temperature').addEventListener('input', (e) => {
+        document.getElementById('tempValue').textContent = e.target.value;
+        saveFormData();
+    });
+    
+    document.getElementById('maxTokens').addEventListener('input', (e) => {
+        document.getElementById('tokensValue').textContent = e.target.value;
+        saveFormData();
+    });
+    
+    // Update advanced parameter slider values (with auto-save)
+    document.getElementById('topP').addEventListener('input', (e) => {
+        document.getElementById('topPValue').textContent = e.target.value;
+        saveFormData();
+    });
+    
+    document.getElementById('topLogprobs').addEventListener('input', (e) => {
+        document.getElementById('topLogprobsValue').textContent = e.target.value;
+        saveFormData();
+    });
+    
+    // Form submission
+    document.getElementById('visualizerForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const prompt = document.getElementById('prompt').value.trim();
+        const model = document.getElementById('model').value;
+        const apiKey = document.getElementById('apiKey').value.trim();
+        const temperature = parseFloat(document.getElementById('temperature').value);
+        const maxTokens = parseInt(document.getElementById('maxTokens').value);
+        
+        // Get advanced parameters
+        const topP = parseFloat(document.getElementById('topP').value);
+        const topLogprobs = parseInt(document.getElementById('topLogprobs').value);
+        
+        if (!prompt || !apiKey) {
+            alert('Please fill in all required fields');
+            return;
+        }
+        
+        // Show loading
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('resultsSection').style.display = 'none';
+        
+        // Build request body
+        const requestBody = {
+            prompt,
+            model,
+            api_key: apiKey,
+            temperature,
+            max_tokens: maxTokens,
+            top_logprobs: topLogprobs
+        };
+        
+        // Add advanced parameters only if they differ from defaults
+        if (topP < 1.0) {
+            requestBody.top_p = topP;
+        }
+        
+        try {
+            const response = await fetch('/visualize-tokens', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+            
+            const data = await response.json();
+            
+            // Hide loading
+            document.getElementById('loading').style.display = 'none';
+            
+            if (data.error) {
+                alert('Error: ' + data.error);
+            } else {
+                displayResults(data);
+                saveResults(data);
+            }
+        } catch (error) {
+            document.getElementById('loading').style.display = 'none';
+            alert('An error occurred: ' + error.message);
+        }
+    });
+    
+    function displayResults(data) {
+        tokenData = data.token_data;
+        
+        // Update stats
+        document.getElementById('statsModel').textContent = data.model;
+        document.getElementById('statsTokens').textContent = data.total_tokens;
+        document.getElementById('statsTime').textContent = data.time_taken + 's';
+        document.getElementById('responsePreview').textContent = data.response;
+        
+        // Render token list
+        renderTokenList();
+        
+        // Show results
+        document.getElementById('resultsSection').style.display = 'block';
+        
+        // Select first token by default
+        if (tokenData.length > 0) {
+            selectToken(0);
+        }
+    }
+    
+    function renderTokenList() {
+        const tokenList = document.getElementById('tokenList');
+        tokenList.innerHTML = '';
+        
+        tokenData.forEach((token, index) => {
+            const tokenRow = document.createElement('div');
+            tokenRow.className = 'token-row';
+            tokenRow.dataset.index = index;
+            if (index === selectedTokenIndex) {
+                tokenRow.classList.add('selected');
+            }
+            
+            // Calculate probability percentage for bar width
+            const probPercent = Math.min(100, token.chosen_probability);
+            
+            tokenRow.innerHTML = `
+                <div class="token-position">#${token.position + 1}</div>
+                <div class="token-text">${escapeHtml(token.chosen_token)}</div>
+                <div>
+                    <div class="token-prob-bar">
+                        <div class="token-prob-fill" style="width: ${probPercent}%"></div>
+                    </div>
+                    <div class="token-prob-text text-center">${token.chosen_probability}%</div>
+                </div>
+            `;
+            
+            tokenRow.addEventListener('click', () => selectToken(index));
+            tokenList.appendChild(tokenRow);
+        });
+    }
+    
+    function selectToken(index) {
+        selectedTokenIndex = index;
+        
+        // Update selected state in list
+        document.querySelectorAll('.token-row').forEach((row, i) => {
+            if (i === index) {
+                row.classList.add('selected');
+            } else {
+                row.classList.remove('selected');
+            }
+        });
+        
+        // Update stats
+        document.getElementById('statsPosition').textContent = `#${index + 1}`;
+        
+        // Render detail panel
+        renderDetailPanel(tokenData[index]);
+        
+        // Scroll token into view
+        const selectedRow = document.querySelector(`.token-row[data-index="${index}"]`);
+        if (selectedRow) {
+            selectedRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+        
+        // Save the selected token index
+        if (sessionStorage.getItem(RESULTS_STORAGE_KEY)) {
+            try {
+                const resultData = JSON.parse(sessionStorage.getItem(RESULTS_STORAGE_KEY));
+                resultData.selectedTokenIndex = index;
+                sessionStorage.setItem(RESULTS_STORAGE_KEY, JSON.stringify(resultData));
+            } catch (e) {
+                console.error('Error saving selected token:', e);
+            }
+        }
+    }
+    
+    function renderDetailPanel(token) {
+        const detailPanel = document.getElementById('detailPanel');
+        
+        // Create array with chosen token and alternatives
+        const allTokens = [
+            {
+                token: token.chosen_token,
+                probability: token.chosen_probability,
+                logprob: token.chosen_logprob,
+                isChosen: true
+            },
+            ...token.alternatives.map(alt => ({
+                token: alt.token,
+                probability: alt.probability,
+                logprob: alt.logprob,
+                isChosen: false
+            }))
+        ];
+        
+        // Sort by probability in descending order
+        allTokens.sort((a, b) => b.probability - a.probability);
+        
+        const html = `
+            <div class="alternatives-section" style="margin-top: 0;">
+                ${allTokens.map((item, idx) => `
+                    <div class="alternative-item" style="${item.isChosen ? 'background-color: #E9FFDB;' : ''}">
+                        <div class="d-flex align-items-center mb-2">
+                            <span class="alternative-rank">${idx + 1}</span>
+                            <span class="alternative-token">${escapeHtml(item.token)}</span>
+                        </div>
+                        <div class="alternative-prob-container">
+                            <div class="alternative-prob-bar">
+                                <div class="alternative-prob-fill" style="width: ${Math.min(100, item.probability)}%"></div>
+                            </div>
+                            <div class="alternative-prob-text">${item.probability}%</div>
+                        </div>
+                        <div class="text-muted small mt-1">logprob: ${item.logprob.toFixed(4)}</div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+        
+        detailPanel.innerHTML = html;
+    }
+    
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+</script>
+{% endblock %}

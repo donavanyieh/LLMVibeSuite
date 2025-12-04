@@ -1,0 +1,561 @@
+{% extends "base.html" %}
+
+{% block title %}Prompt Crafter | PromptVana{% endblock %}
+
+{% block content %}
+<div class="container py-4 py-md-5">
+    <!-- Header -->
+    <div class="mb-4">
+        <h2 class="fw-bold mb-1">Prompt Crafter</h2>
+        <p class="text-muted mb-0">Build and refine prompts for optimal AI responses</p>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="card main-card">
+        <div class="card-body p-4">
+            <!-- Mode Selector -->
+            <div class="mb-4">
+                <div class="btn-group w-100" role="group" aria-label="Prompt Crafter Mode">
+                    <input type="radio" class="btn-check" name="crafterMode" id="buildMode" value="build" checked>
+                    <label class="btn btn-outline-primary" for="buildMode">
+                        <i class="bi bi-tools me-1"></i>Build a Prompt
+                    </label>
+                    
+                    <input type="radio" class="btn-check" name="crafterMode" id="feedbackMode" value="feedback">
+                    <label class="btn btn-outline-primary" for="feedbackMode">
+                        <i class="bi bi-chat-left-text me-1"></i>Get Feedback on Prompt
+                    </label>
+                </div>
+            </div>
+            
+            <!-- Model Selection -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <label for="modelSelect" class="form-label fw-semibold">Select Model</label>
+                    <select class="form-select" id="modelSelect" name="model" required>
+                        <option value="">Choose a model...</option>
+                        <option value="gpt4">OpenAI GPT-4</option>
+                        <option value="gpt4o" selected>OpenAI GPT-4o</option>
+                        <option value="gpt35-turbo">OpenAI GPT-3.5-turbo</option>
+                        <option value="anthropic">Anthropic Claude Sonnet 4</option>
+                        <option value="gemini">Google Gemini Flash 2.0</option>
+                    </select>
+                </div>
+                
+                <div class="col-md-6">
+                    <label for="apiKey" class="form-label fw-semibold"><span id="apiKeyLabel">API Key</span></label>
+                    <input type="password" class="form-control" id="apiKey" name="apiKey" 
+                        placeholder="Enter your API key" required>
+                </div>
+            </div>
+            
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <p class="text-muted mb-0" id="modeDescription">
+                    <i class="bi bi-info-circle me-2"></i>Fill in the fields below to help craft an optimized prompt. Additional fields are optional.
+                </p>
+                <div>
+                    <button type="button" id="clearButton" class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>Revert to Default
+                    </button>
+                </div>
+            </div>
+            
+            <form id="promptCrafterForm">
+                <!-- Build Mode Fields -->
+                <div id="buildModeFields" class="row g-4">
+                    <!-- Task Description -->
+                    <div class="col-md-6">
+                        <div class="mb-0">
+                            <label for="taskDescription" class="form-label fw-semibold">Describe your task <span class="badge bg-success">Required</span></label>
+                            <small class="form-text text-muted d-block mb-2">What task or problem are you trying to solve?</small>
+                            <textarea class="form-control" id="taskDescription" name="taskDescription" rows="4" 
+                                placeholder="Example: Write a product description for an e-commerce website"></textarea>
+                        </div>
+                    </div>
+                    
+                    <!-- Purpose -->
+                    <div class="col-md-6">
+                        <div class="mb-0">
+                            <label for="purpose" class="form-label fw-semibold">Why do you need this <span class="badge bg-secondary">Recommended</span></label>
+                            <small class="form-text text-muted d-block mb-2">What's the goal or intended use?</small>
+                            <textarea class="form-control" id="purpose" name="purpose" rows="4" 
+                                placeholder="Example: To increase product page conversions and engagement"></textarea>
+                        </div>
+                    </div>
+                    
+                    <!-- Output Format -->
+                    <div class="col-md-6">
+                        <div class="mb-0">
+                            <label for="outputFormat" class="form-label fw-semibold">How does the output look <span class="badge bg-secondary">Recommended</span></label>
+                            <small class="form-text text-muted d-block mb-2">Describe the desired format or structure</small>
+                            <textarea class="form-control" id="outputFormat" name="outputFormat" rows="4" 
+                                placeholder="Example: Bullet points, structured list, paragraph format, JSON, etc."></textarea>
+                        </div>
+                    </div>
+                    
+                    <!-- Style/Tone -->
+                    <div class="col-md-6">
+                        <div class="mb-0">
+                            <label for="styleTone" class="form-label fw-semibold">Any styles or tones <span class="badge bg-secondary">Recommended</span></label>
+                            <small class="form-text text-muted d-block mb-2">Specify writing style or tone preferences</small>
+                            <textarea class="form-control" id="styleTone" name="styleTone" rows="4" 
+                                placeholder="Example: Professional, casual, technical, creative, persuasive, etc."></textarea>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Feedback Mode Fields -->
+                <div id="feedbackModeFields" style="display: none;">
+                    <div class="mb-0">
+                        <label for="existingPrompt" class="form-label fw-semibold">Your Existing Prompt <span class="badge bg-success">Required</span></label>
+                        <small class="form-text text-muted d-block mb-2">Paste your prompt here to get improvement suggestions</small>
+                        <textarea class="form-control" id="existingPrompt" name="existingPrompt" rows="10" 
+                            placeholder="Example: Write a comprehensive product description for our new wireless headphones. Include features, benefits, and a compelling call to action."></textarea>
+                    </div>
+                </div>
+                
+                <!-- Submit Button -->
+                <div class="d-grid mt-4">
+                    <button type="submit" class="btn btn-primary btn-lg" id="submitButton">
+                        <i class="bi bi-magic me-2"></i>Craft Prompt
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Results Section -->
+    <div class="card main-card mt-4" id="promptResult" style="display: none;">
+        <div class="card-body p-4">
+            <!-- Loading Spinner -->
+            <div id="loading" class="text-center py-5" style="display: none;">
+                <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="text-muted">Crafting your prompt, please wait...</p>
+            </div>
+            
+            <!-- Results Content -->
+            <div id="resultContent">
+            <h5 class="mb-3" id="resultTitle">
+                <i class="bi bi-sparkles me-2"></i>Crafted Prompt
+            </h5>
+            
+            <div class="alert alert-light border" role="alert">
+                <p class="mb-0" id="craftedPromptText" style="line-height: 1.7; white-space: pre-wrap;"></p>
+            </div>
+            
+            <div class="d-flex gap-2 mb-4">
+                <button type="button" class="btn btn-outline-primary btn-sm" onclick="copyPrompt()">
+                    <i class="bi bi-clipboard me-1"></i>Copy Prompt
+                </button>
+            </div>
+            
+            <hr>
+            
+            <h6 class="mb-3" id="suggestionsTitle">
+                <i class="bi bi-lightbulb me-2"></i>Ways to Improve This Prompt
+            </h6>
+            <div id="improvementSuggestions" class="text-muted" style="line-height: 1.7;">
+            </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentMode = 'build';
+    const STORAGE_KEY = 'promptCrafter_formData';
+    const RESULTS_STORAGE_KEY = 'promptCrafter_results';
+    let saveTimeout = null;
+    
+    // Model to API Key label mapping
+    const modelApiKeyLabels = {
+        'gpt4': 'OpenAI API Key',
+        'gpt4o': 'OpenAI API Key',
+        'gpt35-turbo': 'OpenAI API Key',
+        'anthropic': 'Anthropic API Key',
+        'gemini': 'Google API Key'
+    };
+    
+    // Update API Key label based on selected model
+    function updateApiKeyLabel() {
+        const selectedModel = document.getElementById('modelSelect').value;
+        const label = modelApiKeyLabels[selectedModel] || 'API Key';
+        document.getElementById('apiKeyLabel').textContent = label;
+    }
+    
+    // Save form data to sessionStorage
+    function saveFormData() {
+        const formData = {
+            mode: currentMode,
+            model: document.getElementById('modelSelect').value,
+            apiKey: document.getElementById('apiKey').value,
+            taskDescription: document.getElementById('taskDescription').value,
+            purpose: document.getElementById('purpose').value,
+            outputFormat: document.getElementById('outputFormat').value,
+            styleTone: document.getElementById('styleTone').value,
+            existingPrompt: document.getElementById('existingPrompt').value
+        };
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(formData));
+    }
+    
+    // Load form data from sessionStorage
+    function loadFormData() {
+        const savedData = sessionStorage.getItem(STORAGE_KEY);
+        if (savedData) {
+            try {
+                const formData = JSON.parse(savedData);
+                
+                // Restore mode
+                if (formData.mode) {
+                    currentMode = formData.mode;
+                    if (formData.mode === 'build') {
+                        document.getElementById('buildMode').checked = true;
+                    } else {
+                        document.getElementById('feedbackMode').checked = true;
+                    }
+                    // Trigger mode change to update UI
+                    document.querySelector('input[name="crafterMode"]:checked').dispatchEvent(new Event('change'));
+                }
+                
+                // Restore model and API key
+                if (formData.model) {
+                    document.getElementById('modelSelect').value = formData.model;
+                    updateApiKeyLabel();
+                }
+                if (formData.apiKey) {
+                    document.getElementById('apiKey').value = formData.apiKey;
+                }
+                
+                // Restore form fields
+                document.getElementById('taskDescription').value = formData.taskDescription || '';
+                document.getElementById('purpose').value = formData.purpose || '';
+                document.getElementById('outputFormat').value = formData.outputFormat || '';
+                document.getElementById('styleTone').value = formData.styleTone || '';
+                document.getElementById('existingPrompt').value = formData.existingPrompt || '';
+            } catch (e) {
+                console.error('Error loading form data:', e);
+            }
+        }
+    }
+    
+    // Save results to sessionStorage
+    function saveResults(data) {
+        const resultData = {
+            title: document.getElementById('resultTitle').innerHTML,
+            suggestionsTitle: document.getElementById('suggestionsTitle').innerHTML,
+            craftedPrompt: document.getElementById('craftedPromptText').textContent,
+            suggestions: document.getElementById('improvementSuggestions').innerHTML,
+            visible: true
+        };
+        sessionStorage.setItem(RESULTS_STORAGE_KEY, JSON.stringify(resultData));
+    }
+    
+    // Load results from sessionStorage
+    function loadResults() {
+        const savedResults = sessionStorage.getItem(RESULTS_STORAGE_KEY);
+        if (savedResults) {
+            try {
+                const resultData = JSON.parse(savedResults);
+                
+                // Show results section
+                document.getElementById('promptResult').style.display = 'block';
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('resultContent').style.display = 'block';
+                
+                // Restore result content
+                document.getElementById('resultTitle').innerHTML = resultData.title;
+                document.getElementById('suggestionsTitle').innerHTML = resultData.suggestionsTitle;
+                document.getElementById('craftedPromptText').textContent = resultData.craftedPrompt;
+                document.getElementById('improvementSuggestions').innerHTML = resultData.suggestions;
+            } catch (e) {
+                console.error('Error loading results:', e);
+            }
+        }
+    }
+    
+    // Debounced auto-save for text inputs
+    function debouncedSave() {
+        clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(saveFormData, 500);
+    }
+    
+    // Add event listeners for auto-save on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize API key label
+        updateApiKeyLabel();
+        
+        // Load saved data
+        loadFormData();
+        loadResults();
+        
+        // Add model select listener
+        document.getElementById('modelSelect').addEventListener('change', function() {
+            updateApiKeyLabel();
+            saveFormData();
+        });
+        
+        // Add API key input listener
+        document.getElementById('apiKey').addEventListener('input', debouncedSave);
+        
+        // Add input listeners for auto-save
+        document.getElementById('taskDescription').addEventListener('input', debouncedSave);
+        document.getElementById('purpose').addEventListener('input', debouncedSave);
+        document.getElementById('outputFormat').addEventListener('input', debouncedSave);
+        document.getElementById('styleTone').addEventListener('input', debouncedSave);
+        document.getElementById('existingPrompt').addEventListener('input', debouncedSave);
+    });
+    
+    // Mode switching (with save)
+    document.querySelectorAll('input[name="crafterMode"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            saveFormData(); // Save when mode changes
+            currentMode = this.value;
+            const buildFields = document.getElementById('buildModeFields');
+            const feedbackFields = document.getElementById('feedbackModeFields');
+            const modeDescription = document.getElementById('modeDescription');
+            const submitButton = document.getElementById('submitButton');
+            
+            if (currentMode === 'build') {
+                buildFields.style.display = 'flex';
+                feedbackFields.style.display = 'none';
+                modeDescription.innerHTML = '<i class="bi bi-info-circle me-2"></i>Fill in the fields below to help craft an optimized prompt. Additional fields are optional.';
+                submitButton.innerHTML = '<i class="bi bi-magic me-2"></i>Craft Prompt';
+            } else {
+                buildFields.style.display = 'none';
+                feedbackFields.style.display = 'block';
+                modeDescription.innerHTML = '<i class="bi bi-info-circle me-2"></i>Paste your existing prompt to get detailed feedback and improvement suggestions.';
+                submitButton.innerHTML = '<i class="bi bi-chat-left-text me-2"></i>Get Feedback';
+            }
+            
+            // Hide results when switching modes
+            document.getElementById('promptResult').style.display = 'none';
+        });
+    });
+    
+    // Clear button (with storage clear)
+    document.getElementById('clearButton').addEventListener('click', function() {
+        // Reset model and API key to defaults
+        document.getElementById('modelSelect').value = 'gpt4o';
+        document.getElementById('apiKey').value = '';
+        updateApiKeyLabel();
+        
+        if (currentMode === 'build') {
+            // Clear build mode fields
+            document.getElementById('taskDescription').value = '';
+            document.getElementById('purpose').value = '';
+            document.getElementById('outputFormat').value = '';
+            document.getElementById('styleTone').value = '';
+        } else {
+            // Clear feedback mode field
+            document.getElementById('existingPrompt').value = '';
+        }
+        
+        // Hide results
+        document.getElementById('promptResult').style.display = 'none';
+        
+        // Clear sessionStorage
+        sessionStorage.removeItem(STORAGE_KEY);
+        sessionStorage.removeItem(RESULTS_STORAGE_KEY);
+    });
+    
+    document.getElementById('promptCrafterForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        if (currentMode === 'build') {
+            handleBuildMode();
+        } else {
+            handleFeedbackMode();
+        }
+    });
+    
+    async function handleBuildMode() {
+        const model = document.getElementById('modelSelect').value;
+        const apiKey = document.getElementById('apiKey').value.trim();
+        const taskDescription = document.getElementById('taskDescription').value.trim();
+        const purpose = document.getElementById('purpose').value.trim();
+        const outputFormat = document.getElementById('outputFormat').value.trim();
+        const styleTone = document.getElementById('styleTone').value.trim();
+        
+        // Validation
+        if (!model) {
+            alert('Please select a model');
+            return;
+        }
+        
+        if (!apiKey) {
+            alert('Please enter your API key');
+            return;
+        }
+        
+        if (!taskDescription) {
+            alert('Please describe your task');
+            return;
+        }
+        
+        // Show results container with loading
+        document.getElementById('promptResult').style.display = 'block';
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('resultContent').style.display = 'none';
+        
+        try {
+            const response = await fetch('/craft-prompt-mock', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mode: 'build',
+                    model: model,
+                    api_key: apiKey,
+                    task_description: taskDescription,
+                    purpose: purpose,
+                    output_format: outputFormat,
+                    style_tone: styleTone
+                })
+            });
+            
+            const data = await response.json();
+            
+            // Hide loading, show results
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('resultContent').style.display = 'block';
+            
+            if (!response.ok) {
+                alert(data.error || 'An error occurred');
+                return;
+            }
+            
+            // Update result title
+            document.getElementById('resultTitle').innerHTML = '<i class="bi bi-sparkles me-2"></i>' + data.title;
+            
+            // Update suggestions title
+            document.getElementById('suggestionsTitle').innerHTML = '<i class="bi bi-lightbulb me-2"></i>' + data.suggestions_title;
+            
+            // Display the crafted prompt
+            document.getElementById('craftedPromptText').textContent = data.crafted_prompt;
+            
+            // Display improvement suggestions
+            let suggestionsHTML = '<ul class="mb-0">';
+            data.suggestions.forEach(suggestion => {
+                // Parse bold text if it exists (format: "Title: Description")
+                const parts = suggestion.split(':');
+                if (parts.length > 1) {
+                    suggestionsHTML += `<li><strong>${parts[0]}:</strong>${parts.slice(1).join(':')}</li>`;
+                } else {
+                    suggestionsHTML += `<li>${suggestion}</li>`;
+                }
+            });
+            suggestionsHTML += '</ul>';
+            document.getElementById('improvementSuggestions').innerHTML = suggestionsHTML;
+            
+            // Save results to sessionStorage
+            saveResults(data);
+            
+            // Scroll to results
+            document.getElementById('promptResult').scrollIntoView({ behavior: 'smooth' });
+        } catch (error) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('resultContent').style.display = 'block';
+            alert('Error: ' + error.message);
+        }
+    }
+    
+    async function handleFeedbackMode() {
+        const model = document.getElementById('modelSelect').value;
+        const apiKey = document.getElementById('apiKey').value.trim();
+        const existingPrompt = document.getElementById('existingPrompt').value.trim();
+        
+        // Validation
+        if (!model) {
+            alert('Please select a model');
+            return;
+        }
+        
+        if (!apiKey) {
+            alert('Please enter your API key');
+            return;
+        }
+        
+        if (!existingPrompt) {
+            alert('Please paste your existing prompt');
+            return;
+        }
+        
+        // Show results container with loading
+        document.getElementById('promptResult').style.display = 'block';
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('resultContent').style.display = 'none';
+        
+        try {
+            const response = await fetch('/craft-prompt-mock', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mode: 'feedback',
+                    model: model,
+                    api_key: apiKey,
+                    existing_prompt: existingPrompt
+                })
+            });
+            
+            const data = await response.json();
+            
+            // Hide loading, show results
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('resultContent').style.display = 'block';
+            
+            if (!response.ok) {
+                alert(data.error || 'An error occurred');
+                return;
+            }
+            
+            // Update result title
+            document.getElementById('resultTitle').innerHTML = '<i class="bi bi-stars me-2"></i>' + data.title;
+            
+            // Update suggestions title
+            document.getElementById('suggestionsTitle').innerHTML = '<i class="bi bi-arrow-up-circle me-2"></i>' + data.suggestions_title;
+            
+            // Display the optimized prompt
+            document.getElementById('craftedPromptText').textContent = data.crafted_prompt;
+            
+            // Display enhancements
+            let suggestionsHTML = '<ul class="mb-0">';
+            data.suggestions.forEach(suggestion => {
+                // Parse bold text if it exists (format: "Title: Description")
+                const parts = suggestion.split(':');
+                if (parts.length > 1) {
+                    suggestionsHTML += `<li><strong>${parts[0]}:</strong>${parts.slice(1).join(':')}</li>`;
+                } else {
+                    suggestionsHTML += `<li>${suggestion}</li>`;
+                }
+            });
+            suggestionsHTML += '</ul>';
+            document.getElementById('improvementSuggestions').innerHTML = suggestionsHTML;
+            
+            // Save results to sessionStorage
+            saveResults(data);
+            
+            // Scroll to results
+            document.getElementById('promptResult').scrollIntoView({ behavior: 'smooth' });
+        } catch (error) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('resultContent').style.display = 'block';
+            alert('Error: ' + error.message);
+        }
+    }
+    
+    function copyPrompt() {
+        const promptText = document.getElementById('craftedPromptText').textContent;
+        navigator.clipboard.writeText(promptText).then(() => {
+            const btn = event.target.closest('button');
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-check me-1"></i>Copied!';
+            setTimeout(() => {
+                btn.innerHTML = originalHTML;
+            }, 2000);
+        });
+    }
+</script>
+{% endblock %}

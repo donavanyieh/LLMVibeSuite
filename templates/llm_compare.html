@@ -1,0 +1,754 @@
+{% extends "base.html" %}
+
+{% block title %}LLM Compare | PromptVana{% endblock %}
+
+{% block styles %}
+.result-card {
+    border: 1px solid var(--border-color);
+}
+
+.result-header {
+    background: var(--bg-light);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.spinner-border-custom {
+    color: var(--primary-color);
+}
+
+.range-value {
+    background: #f3f4f6;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.models-horizontal {
+    overflow-x: auto;
+    white-space: nowrap;
+    padding-bottom: 1rem;
+}
+
+.models-horizontal .model-card {
+    display: inline-block;
+    vertical-align: top;
+    min-width: 350px;
+    white-space: normal;
+}
+
+.model-card {
+    border: 1px solid var(--border-color);
+    transition: all 0.2s ease;
+}
+
+.model-card:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+}
+
+.chart-container {
+    position: relative;
+    height: 250px;
+    margin-top: 1rem;
+}
+
+.chart-toggle {
+    cursor: pointer;
+    user-select: none;
+}
+
+@media (max-width: 768px) {
+    .models-horizontal .model-card {
+        display: block;
+        min-width: 100%;
+        margin-bottom: 1rem;
+    }
+}
+{% endblock %}
+
+{% block content %}
+<div class="container py-4 py-md-5">
+    <!-- Header -->
+    <div class="mb-4">
+        <h2 class="fw-bold mb-1">LLM Comparison Tool</h2>
+        <p class="text-muted mb-0">See which model performs best with real-time, metric-based comparisons</p>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="card main-card">
+        <div class="card-body p-4">
+            <form id="comparisonForm">
+                <!-- Prompt Input -->
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label for="prompt" class="form-label fw-semibold mb-0">Enter your prompt</label>
+                        <button type="button" id="clearButton" class="btn btn-outline-secondary btn-sm">
+                            <i class="bi bi-arrow-counterclockwise me-1"></i>Revert to Default
+                        </button>
+                    </div>
+                    <textarea class="form-control" id="prompt" name="prompt" rows="4" 
+                        placeholder="Type your question or prompt here..." required></textarea>
+                </div>
+                
+                <!-- Reference Response -->
+                <div class="mb-4">
+                    <label for="reference" class="form-label fw-semibold">Reference Response (Optional)</label>
+                    <textarea class="form-control" id="reference" name="reference" rows="3" 
+                        placeholder="Enter an ideal response to compare against (for ROUGE scoring)..."></textarea>
+                </div>
+                
+                <!-- Models Section -->
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-semibold mb-0">Models (max 3)</h5>
+                        <button type="button" class="btn btn-primary btn-sm" id="addModel">
+                            <i class="bi bi-plus-lg"></i> Add Model
+                        </button>
+                    </div>
+                    
+                    <div class="models-horizontal d-flex gap-3" id="modelsContainer">
+                        <!-- Models will be added dynamically -->
+                    </div>
+                </div>
+                
+                <!-- Submit Button -->
+                <div class="d-grid">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="bi bi-lightning-charge me-2"></i>Compare Models
+                    </button>
+                </div>
+            </form>
+            
+            <!-- Results Container -->
+            <div id="resultsContainer" class="mt-4" style="display: none;">
+                <!-- Loading Spinner -->
+                <div id="loading" class="text-center py-5" style="display: none;">
+                    <div class="spinner-border spinner-border-custom mb-3" role="status" style="width: 3rem; height: 3rem;">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="text-muted">Running models concurrently, please wait...</p>
+                </div>
+                
+                <!-- Results Grid -->
+                <div id="results" class="row g-4"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const STORAGE_KEY = 'llmCompare_formData';
+    const RESULTS_STORAGE_KEY = 'llmCompare_results';
+    let saveTimeout = null;
+    
+    const modelOptions = [
+        { value: 'gpt4', name: 'OpenAI GPT-4' },
+        { value: 'gpt4o', name: 'OpenAI GPT-4o' },
+        { value: 'gpt35-turbo', name: 'OpenAI GPT-3.5-turbo' },
+        { value: 'anthropic', name: 'Anthropic Claude Sonnet 4' },
+        { value: 'gemini', name: 'Google Gemini Flash 2.0' }
+    ];
+    
+    let modelCounter = 0;
+    const maxModels = 3;
+    
+    // Save form data to sessionStorage
+    function saveFormData() {
+        const formData = {
+            prompt: document.getElementById('prompt').value,
+            reference: document.getElementById('reference').value,
+            models: []
+        };
+        
+        // Save all model cards
+        const container = document.getElementById('modelsContainer');
+        Array.from(container.children).forEach(card => {
+            const modelId = card.dataset.modelId;
+            const modelData = {
+                modelId: modelId,
+                selectedModel: card.querySelector(`#${modelId}_select`).value,
+                apiKey: card.querySelector(`#${modelId}_api_key`).value,
+                temperature: card.querySelector(`#${modelId}_temperature`).value,
+                maxTokens: card.querySelector(`#${modelId}_max_tokens`).value
+            };
+            formData.models.push(modelData);
+        });
+        
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(formData));
+    }
+    
+    // Load form data from sessionStorage
+    function loadFormData() {
+        const savedData = sessionStorage.getItem(STORAGE_KEY);
+        if (savedData) {
+            try {
+                const formData = JSON.parse(savedData);
+                
+                // Restore prompt and reference
+                document.getElementById('prompt').value = formData.prompt || '';
+                document.getElementById('reference').value = formData.reference || '';
+                
+                // Clear existing models and restore saved ones
+                const container = document.getElementById('modelsContainer');
+                container.innerHTML = '';
+                modelCounter = 0;
+                
+                if (formData.models && formData.models.length > 0) {
+                    formData.models.forEach(modelData => {
+                        const modelCard = createModelCard();
+                        container.appendChild(modelCard);
+                        
+                        // Restore model data
+                        const modelId = modelCard.dataset.modelId;
+                        if (modelData.selectedModel) {
+                            modelCard.querySelector(`#${modelId}_select`).value = modelData.selectedModel;
+                        }
+                        if (modelData.apiKey) {
+                            modelCard.querySelector(`#${modelId}_api_key`).value = modelData.apiKey;
+                        }
+                        if (modelData.temperature) {
+                            const tempSlider = modelCard.querySelector(`#${modelId}_temperature`);
+                            const tempValue = modelCard.querySelector(`#${modelId}_temp_value`);
+                            tempSlider.value = modelData.temperature;
+                            tempValue.textContent = modelData.temperature;
+                        }
+                        if (modelData.maxTokens) {
+                            const tokensSlider = modelCard.querySelector(`#${modelId}_max_tokens`);
+                            const tokensValue = modelCard.querySelector(`#${modelId}_tokens_value`);
+                            tokensSlider.value = modelData.maxTokens;
+                            tokensValue.textContent = modelData.maxTokens;
+                        }
+                    });
+                    updateAddButtonState();
+                    updateModelOptions();
+                } else {
+                    // Add one default model if no saved data
+                    addModel();
+                }
+            } catch (e) {
+                console.error('Error loading form data:', e);
+                // Add one default model on error
+                if (document.getElementById('modelsContainer').children.length === 0) {
+                    addModel();
+                }
+            }
+        } else {
+            // Add one default model if no saved data
+            addModel();
+        }
+    }
+    
+    // Save results to sessionStorage
+    function saveResults(results, summary) {
+        try {
+            const resultData = {
+                results: results,
+                summary: summary
+            };
+            sessionStorage.setItem(RESULTS_STORAGE_KEY, JSON.stringify(resultData));
+        } catch (e) {
+            console.error('Error saving results:', e);
+        }
+    }
+    
+    // Load results from sessionStorage
+    function loadResults() {
+        const savedResults = sessionStorage.getItem(RESULTS_STORAGE_KEY);
+        if (savedResults) {
+            try {
+                const resultData = JSON.parse(savedResults);
+                
+                // Show results
+                document.getElementById('resultsContainer').style.display = 'block';
+                document.getElementById('loading').style.display = 'none';
+                displayResults(resultData.results, resultData.summary);
+            } catch (e) {
+                console.error('Error loading results:', e);
+            }
+        }
+    }
+    
+    // Debounced auto-save for text inputs
+    function debouncedSave() {
+        clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(saveFormData, 500);
+    }
+    
+    // Add event listeners on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        // Load saved data and results
+        loadFormData();
+        loadResults();
+        
+        // Add input listeners for auto-save
+        document.getElementById('prompt').addEventListener('input', debouncedSave);
+        document.getElementById('reference').addEventListener('input', debouncedSave);
+    });
+
+    function createModelCard() {
+        const modelId = `model_${modelCounter++}`;
+        const cardDiv = document.createElement('div');
+        cardDiv.className = 'model-card';
+        cardDiv.dataset.modelId = modelId;
+        
+        cardDiv.innerHTML = `
+            <div class="card">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center gap-2">
+                        <label class="mb-0 small text-muted">Model:</label>
+                        <select class="form-select form-select-sm" id="${modelId}_select" style="width: auto;">
+                            <option value="">Select Model</option>
+                            ${modelOptions.map(opt => `<option value="${opt.value}">${opt.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <button type="button" class="btn-close" onclick="removeModel('${modelId}')" aria-label="Remove"></button>
+                </div>
+                <div class="card-body">
+                    <!-- API Key -->
+                    <div class="mb-3">
+                        <label for="${modelId}_api_key" class="form-label small text-muted">API Key</label>
+                        <input type="password" class="form-control" id="${modelId}_api_key" placeholder="Enter API key" required>
+                    </div>
+                    
+                    <!-- Temperature -->
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label class="form-label small text-muted mb-0">Temperature</label>
+                            <span class="range-value" id="${modelId}_temp_value">0.7</span>
+                        </div>
+                        <input type="range" class="form-range" id="${modelId}_temperature" min="0" max="1" step="0.1" value="0.7">
+                    </div>
+                    
+                    <!-- Max Tokens -->
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label class="form-label small text-muted mb-0">Max Tokens</label>
+                            <span class="range-value" id="${modelId}_tokens_value">500</span>
+                        </div>
+                        <input type="range" class="form-range" id="${modelId}_max_tokens" min="50" max="2000" step="50" value="500">
+                    </div>
+                    
+                    <!-- Reset Button -->
+                    <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="resetDefaults('${modelId}')">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>Reset to Defaults
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        // Add event listeners
+        const tempSlider = cardDiv.querySelector(`#${modelId}_temperature`);
+        const tempValue = cardDiv.querySelector(`#${modelId}_temp_value`);
+        const tokensSlider = cardDiv.querySelector(`#${modelId}_max_tokens`);
+        const tokensValue = cardDiv.querySelector(`#${modelId}_tokens_value`);
+        const selectElement = cardDiv.querySelector(`#${modelId}_select`);
+        
+        tempSlider.addEventListener('input', () => {
+            tempValue.textContent = tempSlider.value;
+            saveFormData();
+        });
+        
+        tokensSlider.addEventListener('input', () => {
+            tokensValue.textContent = tokensSlider.value;
+            saveFormData();
+        });
+        
+        selectElement.addEventListener('change', () => {
+            updateModelOptions();
+            saveFormData();
+        });
+        
+        // Auto-save for API key input
+        const apiKeyInput = cardDiv.querySelector(`#${modelId}_api_key`);
+        apiKeyInput.addEventListener('input', debouncedSave);
+        
+        return cardDiv;
+    }
+
+    function addModel() {
+        const container = document.getElementById('modelsContainer');
+        const currentModels = container.children.length;
+        
+        if (currentModels >= maxModels) {
+            alert(`Maximum ${maxModels} models allowed`);
+            return;
+        }
+        
+        const modelCard = createModelCard();
+        container.appendChild(modelCard);
+        
+        updateAddButtonState();
+        updateModelOptions();
+    }
+
+    function removeModel(modelId) {
+        const container = document.getElementById('modelsContainer');
+        const modelCard = document.querySelector(`[data-model-id="${modelId}"]`);
+        
+        if (modelCard) {
+            container.removeChild(modelCard);
+        }
+        
+        updateAddButtonState();
+        updateModelOptions();
+        saveFormData();
+    }
+    
+    // Make removeModel available globally
+    window.removeModel = removeModel;
+
+    function resetDefaults(modelId) {
+        const tempSlider = document.getElementById(`${modelId}_temperature`);
+        const tempValue = document.getElementById(`${modelId}_temp_value`);
+        if (tempSlider && tempValue) {
+            tempSlider.value = '0.7';
+            tempValue.textContent = '0.7';
+        }
+        
+        const tokensSlider = document.getElementById(`${modelId}_max_tokens`);
+        const tokensValue = document.getElementById(`${modelId}_tokens_value`);
+        if (tokensSlider && tokensValue) {
+            tokensSlider.value = '500';
+            tokensValue.textContent = '500';
+        }
+    }
+    
+    // Make resetDefaults available globally
+    window.resetDefaults = resetDefaults;
+
+    function updateAddButtonState() {
+        const container = document.getElementById('modelsContainer');
+        const addButton = document.getElementById('addModel');
+        const currentModels = container.children.length;
+        
+        addButton.disabled = currentModels >= maxModels;
+    }
+
+    function updateModelOptions() {
+        const container = document.getElementById('modelsContainer');
+        const selectedModels = new Set();
+        
+        Array.from(container.children).forEach(card => {
+            const modelId = card.dataset.modelId;
+            const selectElement = card.querySelector(`#${modelId}_select`);
+            if (selectElement.value) {
+                selectedModels.add(selectElement.value);
+            }
+        });
+        
+        Array.from(container.children).forEach(card => {
+            const modelId = card.dataset.modelId;
+            const selectElement = card.querySelector(`#${modelId}_select`);
+            const currentValue = selectElement.value;
+            
+            Array.from(selectElement.options).forEach(option => {
+                if (option.value && option.value !== currentValue) {
+                    option.disabled = selectedModels.has(option.value);
+                }
+            });
+        });
+    }
+
+    function collectFormData() {
+        const container = document.getElementById('modelsContainer');
+        const models = [];
+        const parameters = {};
+        
+        Array.from(container.children).forEach(card => {
+            const modelId = card.dataset.modelId;
+            const selectElement = card.querySelector(`#${modelId}_select`);
+            const modelType = selectElement.value;
+            
+            if (!modelType) return;
+            
+            const apiKey = card.querySelector(`#${modelId}_api_key`).value;
+            const temperature = parseFloat(card.querySelector(`#${modelId}_temperature`).value);
+            const maxTokens = parseInt(card.querySelector(`#${modelId}_max_tokens`).value);
+            
+            models.push(modelType);
+            parameters[modelType] = {
+                api_key: apiKey,
+                temperature: temperature,
+                max_tokens: maxTokens
+            };
+        });
+        
+        return { models, parameters };
+    }
+
+    function createLogprobChart(canvasId, tokens, logprobs) {
+        const ctx = document.getElementById(canvasId).getContext('2d');
+        
+        // Limit to first 50 tokens for readability
+        const displayTokens = tokens.slice(0, 50);
+        const displayLogprobs = logprobs.slice(0, 50);
+        
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: displayTokens,
+                datasets: [{
+                    label: 'Log Probability',
+                    data: displayLogprobs,
+                    borderColor: 'rgb(59, 130, 246)',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    borderWidth: 2,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    tension: 0.1,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: function(context) {
+                                const idx = context[0].dataIndex;
+                                return `Token: "${displayTokens[idx]}"`;
+                            },
+                            label: function(context) {
+                                return `Log Prob: ${context.parsed.y.toFixed(3)}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Tokens'
+                        },
+                        ticks: {
+                            maxRotation: 45,
+                            minRotation: 45,
+                            autoSkip: true,
+                            maxTicksLimit: 20
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Log Probability'
+                        },
+                        beginAtZero: false
+                    }
+                }
+            }
+        });
+    }
+
+    function displayResults(results, summary) {
+        const resultsDiv = document.getElementById('results');
+        resultsDiv.innerHTML = '';
+        
+        results.forEach((result, index) => {
+            const col = document.createElement('div');
+            col.className = 'col-md-4';
+            
+            const wordCount = result.response ? result.response.split(/\s+/).length : 0;
+            const hasLogprobs = result.logprobs && result.logprobs.length > 0;
+            const chartId = `chart_${index}`;
+            
+            // Format metrics display
+            const formatMetric = (value) => value !== null && value !== undefined ? value : 'N/A';
+            const formatRouge = (rouge) => {
+                if (!rouge) return 'N/A';
+                return rouge.rouge1;
+            };
+            
+            col.innerHTML = `
+                <div class="card result-card">
+                    <div class="card-header result-header">
+                        <h6 class="mb-0 fw-semibold">${result.model}</h6>
+                    </div>
+                    <div class="card-body">
+                        ${result.error ? 
+                            `<div class="alert alert-danger mb-0" role="alert">
+                                <i class="bi bi-exclamation-triangle me-2"></i>${result.error}
+                            </div>` :
+                            `<p class="card-text text-muted small">${result.response}</p>`
+                        }
+                    </div>
+                    <div class="card-footer bg-white">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-borderless mb-0">
+                                <tbody>
+                                    <tr>
+                                        <td class="text-muted small">Time Taken:</td>
+                                        <td class="text-end fw-semibold small">${result.time_taken}s</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted small">Word Count:</td>
+                                        <td class="text-end fw-semibold small">${wordCount}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted small">Readability:</td>
+                                        <td class="text-end fw-semibold small">${formatMetric(result.readability)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted small">ROUGE-1:</td>
+                                        <td class="text-end fw-semibold small">${formatRouge(result.rouge)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted small">Semantic Sim:</td>
+                                        <td class="text-end fw-semibold small">${formatMetric(result.semantic_similarity)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted small">Perplexity:</td>
+                                        <td class="text-end fw-semibold small">${formatMetric(result.perplexity)}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        ${hasLogprobs ? `
+                            <div class="mt-3">
+                                <button class="btn btn-sm btn-outline-primary w-100 chart-toggle" onclick="toggleChart('${chartId}')">
+                                    <i class="bi bi-graph-up me-1"></i>Hide Token Logprobs Chart
+                                </button>
+                                <div id="${chartId}_container" class="chart-container">
+                                    <canvas id="${chartId}"></canvas>
+                                </div>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+            
+            resultsDiv.appendChild(col);
+            
+            // Render chart immediately if logprobs exist
+            if (hasLogprobs) {
+                col.dataset.chartData = JSON.stringify({
+                    tokens: result.tokens,
+                    logprobs: result.logprobs
+                });
+                
+                // Render chart after the element is added to DOM
+                setTimeout(() => {
+                    createLogprobChart(chartId, result.tokens, result.logprobs);
+                }, 0);
+            }
+        });
+        
+        // Add summary section if provided
+        if (summary) {
+            const summaryDiv = document.createElement('div');
+            summaryDiv.className = 'col-12 mt-3';
+            
+            summaryDiv.innerHTML = `
+                <div class="alert alert-info mb-0">
+                    <h5 class="mb-2">
+                        <i class="bi bi-bar-chart-line me-2"></i>Analysis Summary
+                    </h5>
+                    <p class="mb-0">
+                        ${summary}
+                    </p>
+                </div>
+            `;
+            
+            resultsDiv.appendChild(summaryDiv);
+        }
+    }
+
+    // Clear button - reset everything to fresh state
+    document.getElementById('clearButton').addEventListener('click', () => {
+        // Clear prompt and reference
+        document.getElementById('prompt').value = '';
+        document.getElementById('reference').value = '';
+        
+        // Clear results
+        document.getElementById('resultsContainer').style.display = 'none';
+        document.getElementById('results').innerHTML = '';
+        
+        // Remove all model cards
+        const modelsContainer = document.getElementById('modelsContainer');
+        modelsContainer.innerHTML = '';
+        
+        // Reset model counter
+        modelCounter = 0;
+        
+        // Add one fresh model card
+        addModel();
+        
+        // Update add button state
+        updateAddButtonState();
+        
+        // Clear sessionStorage
+        sessionStorage.removeItem(STORAGE_KEY);
+        sessionStorage.removeItem(RESULTS_STORAGE_KEY);
+    });
+
+    // Toggle chart visibility
+    function toggleChart(chartId) {
+        const container = document.getElementById(`${chartId}_container`);
+        const button = event.target.closest('button');
+        
+        if (container.style.display === 'none') {
+            container.style.display = 'block';
+            button.innerHTML = '<i class="bi bi-graph-up me-1"></i>Hide Token Logprobs Chart';
+        } else {
+            container.style.display = 'none';
+            button.innerHTML = '<i class="bi bi-graph-up me-1"></i>Show Token Logprobs Chart';
+        }
+    }
+    
+    // Make toggleChart available globally
+    window.toggleChart = toggleChart;
+
+    // Add model button
+    document.getElementById('addModel').addEventListener('click', addModel);
+    
+    // Form submission
+    document.getElementById('comparisonForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const prompt = document.getElementById('prompt').value;
+        const reference = document.getElementById('reference').value;
+        const { models, parameters } = collectFormData();
+        
+        if (models.length === 0) {
+            alert('Please add at least one model');
+            return;
+        }
+        
+        // Show loading
+        document.getElementById('resultsContainer').style.display = 'block';
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('results').innerHTML = '';
+        
+        try {
+            const response = await fetch('/compare', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt, reference, models, parameters })
+            });
+            
+            const data = await response.json();
+            
+            // Hide loading, show results
+            document.getElementById('loading').style.display = 'none';
+            
+            if (data.error) {
+                alert(data.error);
+            } else {
+                displayResults(data.results, data.analysis_summary);
+                saveResults(data.results, data.analysis_summary);
+            }
+        } catch (error) {
+            document.getElementById('loading').style.display = 'none';
+            alert('An error occurred: ' + error.message);
+        }
+    });
+
+    // Don't add default model here - it's handled by loadFormData()
+</script>
+{% endblock %}

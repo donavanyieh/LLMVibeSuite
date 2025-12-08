@@ -1,4 +1,5 @@
 # LLMVibeSuite
+<img src="./assets/header.gif" width="800" height="800"/>
 I created this app as a side project as an idea to help people gain a little more intuition of how GenAI output works behind the scenes. As a data scientist, I regularly give workshops/ explain the inconsistancy and non-deterministic outputs of AI. Wanted to make a tool to help visualize some of these outputs live to make things a little more interactive and digestable
 
 # What does this do?

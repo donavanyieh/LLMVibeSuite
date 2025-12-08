@@ -30,8 +30,9 @@ just run the app
 ```bash
 python app.py
 ```
-
-
+# Dependencies
+As mentioned above, python 3.13<br>
+For embedding models, we use sentence-transformers/all-MiniLM-L12-v2 as an open source embedding model. Model is downloaded on initialization.
 
 # Disclaimer
 This entire tool is <b>Vibe Coded</b> - almost entirely while I was on a threadmill walking. Shoutout to [Replit](https://replit.com/) for the easy-to-use app, capable coding agents, and easy porting to github, where I ultimately did the QCs.

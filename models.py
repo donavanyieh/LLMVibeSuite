@@ -16,6 +16,26 @@ MODEL_DISPLAY_NAMES = {
     'gemini': 'Google Gemini Flash 2.0'
 }
 
+# Initialize embedding model at startup
+_EMBEDDING_MODEL = None
+_EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L12-v2"
+
+def _initialize_embedding_model():
+    """Initialize the sentence transformer model. Called once at startup."""
+    global _EMBEDDING_MODEL
+    if _EMBEDDING_MODEL is None:
+        try:
+            from sentence_transformers import SentenceTransformer
+            print(f"Loading embedding model: {_EMBEDDING_MODEL_NAME}...")
+            _EMBEDDING_MODEL = SentenceTransformer(_EMBEDDING_MODEL_NAME)
+            print("Embedding model loaded successfully!")
+        except Exception as e:
+            print(f"Warning: Failed to load embedding model: {str(e)}")
+            _EMBEDDING_MODEL = None
+
+# Load the model when the module is imported
+_initialize_embedding_model()
+
 
 def logprob_to_percentage(logprob):
     """Convert log probability to percentage."""
@@ -264,27 +284,37 @@ def call_openai_for_token_visualization(model_name, model_key, prompt, api_key, 
         }
 
 
-def get_openai_embeddings(texts, api_key, model="text-embedding-3-small"):
+def get_sentence_transformer_embeddings(texts, model_name="sentence-transformers/all-MiniLM-L12-v2"):
     """
-    Get embeddings for one or more texts using OpenAI API.
+    Get embeddings for one or more texts using pre-loaded Sentence-Transformers model.
     
     Args:
         texts: String or list of strings to get embeddings for
-        api_key: OpenAI API key
-        model: Embedding model name (default: text-embedding-3-small)
+        model_name: Model name (default: all-MiniLM-L12-v2) - only used if global model not loaded
     
     Returns:
         List of numpy arrays containing embeddings, or None on error
     """
+    global _EMBEDDING_MODEL
+    
     try:
         import numpy as np
-        client = OpenAI(api_key=api_key)
         
-        response = client.embeddings.create(
-            model=model,
-            input=texts if isinstance(texts, list) else [texts]
-        )
-        return [np.array(data.embedding) for data in response.data]
+        # Use the pre-loaded global model if available, otherwise load it
+        model = _EMBEDDING_MODEL
+        if model is None:
+            from sentence_transformers import SentenceTransformer
+            print(f"Warning: Loading model on-demand (should have been loaded at startup)")
+            model = SentenceTransformer(model_name)
+        
+        # Ensure texts is a list
+        texts_list = texts if isinstance(texts, list) else [texts]
+        
+        # Get embeddings
+        embeddings = model.encode(texts_list, convert_to_numpy=True)
+        
+        # Return as list of numpy arrays (consistent with OpenAI format)
+        return [np.array(emb) for emb in embeddings]
     except Exception as e:
         print(f"Error getting embeddings: {str(e)}")
         return None

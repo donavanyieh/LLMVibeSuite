@@ -9,7 +9,7 @@ import re
 from models import (
     call_gpt4, call_gpt4o, call_gpt35_turbo, call_anthropic, call_gemini, 
     MODEL_DISPLAY_NAMES, call_openai_for_token_visualization,
-    get_openai_embeddings, call_openai_for_prompt_crafting,
+    get_sentence_transformer_embeddings, call_openai_for_prompt_crafting,
     call_anthropic_for_prompt_crafting, call_gemini_for_prompt_crafting
 )
 
@@ -23,7 +23,7 @@ app = Flask(__name__)
 
 # Constants
 MAX_CONCURRENT_MODELS = 3
-EMBEDDING_MODEL = "text-embedding-3-small"
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L12-v2"  # Open-source embedding model
 
 # Score interpretation thresholds
 SCORE_EXCELLENT_THRESHOLD = 70
@@ -78,18 +78,13 @@ def calculate_rouge(reference, generated):
 
 
 def get_embeddings(texts):
-    """Get embeddings for one or more texts using OpenAI API via models.py."""
-    api_key = os.getenv('OPENAI_API_KEY')
-    if not api_key:
-        print("Error: OPENAI_API_KEY not found in environment variables")
-        return None
-    
-    return get_openai_embeddings(texts, api_key, EMBEDDING_MODEL)
+    """Get embeddings for one or more texts using open-source Sentence Transformers."""
+    return get_sentence_transformer_embeddings(texts, EMBEDDING_MODEL)
 
 
 def calculate_semantic_similarity(reference, generated):
     """
-    Calculate semantic similarity using OpenAI embeddings.
+    Calculate semantic similarity using open-source Sentence Transformer embeddings.
     Uses cosine similarity between embedding vectors.
     Returns value between 0-1 where higher = more similar.
     """

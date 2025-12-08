@@ -25,9 +25,9 @@ app = Flask(__name__)
 MAX_CONCURRENT_MODELS = 3
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L12-v2"  # Open-source embedding model
 
-# Score interpretation thresholds
-SCORE_EXCELLENT_THRESHOLD = 70
-SCORE_FAIR_THRESHOLD = 35
+# Score interpretation thresholds (all normalized to 0-1 range)
+SCORE_EXCELLENT_THRESHOLD = 0.70  # Cosine similarity >= 0.70
+SCORE_FAIR_THRESHOLD = 0.35  # Cosine similarity >= 0.35
 PERPLEXITY_EXCELLENT_THRESHOLD = 0.3
 PERPLEXITY_GOOD_THRESHOLD = 0.6
 
@@ -108,7 +108,10 @@ def calculate_semantic_similarity(reference, generated):
 
 def sigmoid(x):
     """Apply standard sigmoid function to normalize values between 0 and 1."""
-    return 1 / (1 + math.exp(-x))
+    try:
+        return 1 / (1 + math.exp(-x))
+    except:
+        return 1
 
 
 def calculate_perplexity(logprobs):
